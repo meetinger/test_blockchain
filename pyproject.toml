@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "blockchain-test"
+version = "0.1.0"
+description = "A test blockchain explorer"
+authors = ["meetinger <meetingerdev@gmail.com>"]
+license = "GPL 3.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = ">= 0.111"
+pydantic = ">= 2.7"
+pydantic-settings = ">= 2.2"
+neo4j = ">=5.20"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
