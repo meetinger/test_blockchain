@@ -10,23 +10,29 @@ import httpx
 
 
 class BlockchairParser:
-    def __init__(self, download_dir: str = "downloads") -> None:
+    def __init__(self, download_dir: str = "downloads", blockchair_api_key: str = None) -> None:
         download_dir = Path(download_dir)
         self._download_dir = download_dir
         self._download_dir.mkdir(parents=True, exist_ok=True)
+        self._blockchair_api_key = blockchair_api_key
 
         (download_dir / "transactions").mkdir(parents=True, exist_ok=True)
         (download_dir / "inputs").mkdir(parents=True, exist_ok=True)
         (download_dir / "outputs").mkdir(parents=True, exist_ok=True)
         (download_dir / "addresses").mkdir(parents=True, exist_ok=True)
 
-    async def _download_file(self, url: str, file: io.BytesIO = None) -> io.BytesIO:
+    async def _download_file(self, url: str, file: io.BytesIO = io.BytesIO()) -> io.BytesIO:
         response_code = None
         attempts = 0
+        headers = {}
+        if self._blockchair_api_key is not None:
+            url = f"{url}?key={self._blockchair_api_key}"
+            print(url)
+
         async with httpx.AsyncClient() as client:
             while response_code != 200 and attempts < 5:
                 attempts += 1
-                response = await client.get(url)
+                response = await client.get(url, headers=headers)
                 response_code = response.status_code
                 print(f"Response code: {response_code}")
             if response_code != 200:
@@ -118,8 +124,8 @@ class BlockchairParser:
 
 
 async def main():
-    parser = BlockchairParser()
-    await parser.download_and_unpack(date=dt.date(2009, 1, 21))
+    parser = BlockchairParser(blockchair_api_key=None)
+    await parser.download_and_unpack(date=dt.date(2009, 4, 21))
     # mp = await parser.start_downloader_process()
     # await mp.join()
 

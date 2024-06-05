@@ -28,6 +28,12 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: int = logging.INFO
 
+    BLOCKCHAIR_TOKEN: str = None
+
+    @property
+    def neo4j_url(self):
+        return f"bolt://{self.DB_NEO4J_HOST}:{self.DB_NEO4J_PORT}/{self.DB_NEO4J_NAME}"
+
     @property
     def db_url(self):
         return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PSW}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
