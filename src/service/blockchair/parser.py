@@ -1,6 +1,8 @@
 import asyncio
-
+import gzip
 import datetime as dt
+import io
+
 from multiprocessing import Process
 from pathlib import Path
 
@@ -18,8 +20,7 @@ class BlockchairParser:
         (download_dir / "outputs").mkdir(parents=True, exist_ok=True)
         (download_dir / "addresses").mkdir(parents=True, exist_ok=True)
 
-
-    async def _download_file(self, url: str) -> bytes:
+    async def _download_file(self, url: str, file: io.BytesIO = None) -> io.BytesIO:
         response_code = None
         attempts = 0
         async with httpx.AsyncClient() as client:
@@ -30,25 +31,26 @@ class BlockchairParser:
                 print(f"Response code: {response_code}")
             if response_code != 200:
                 raise Exception(f"Failed to download file: {url}")
-            return response.content
+            file.write(response.content)
+            return file
 
-    async def download_transactions(self, date: dt.date) -> bytes:
+    async def download_transactions(self, date: dt.date) -> io.BytesIO:
         url = f"https://gz.blockchair.com/bitcoin/transactions/blockchair_bitcoin_transactions_{date.strftime('%Y%m%d')}.tsv.gz"
         return await self._download_file(url)
 
-    async def download_inputs(self, date: dt.date) -> bytes:
+    async def download_inputs(self, date: dt.date) -> io.BytesIO:
         url = f"https://gz.blockchair.com/bitcoin/inputs/blockchair_bitcoin_inputs_{date.strftime('%Y%m%d')}.tsv.gz"
         return await self._download_file(url)
 
-    async def download_outputs(self, date: dt.date) -> bytes:
+    async def download_outputs(self, date: dt.date) -> io.BytesIO:
         url = f"https://gz.blockchair.com/bitcoin/outputs/blockchair_bitcoin_outputs_{date.strftime('%Y%m%d')}.tsv.gz"
         return await self._download_file(url)
 
-    async def download_addresses(self, date: dt.date) -> bytes:
+    async def download_addresses(self, date: dt.date) -> io.BytesIO:
         url = f"https://gz.blockchair.com/bitcoin/addresses/blockchair_bitcoin_addresses_latest.tsv.gz"
         return await self._download_file(url)
 
-    async def download_all_by_date(self, date: dt.date) -> tuple[bytes, bytes, bytes, bytes]:
+    async def download_all_by_date(self, date: dt.date) -> tuple[io.BytesIO, io.BytesIO, io.BytesIO, io.BytesIO]:
         return await asyncio.gather(
             self.download_transactions(date),
             self.download_inputs(date),
@@ -57,18 +59,45 @@ class BlockchairParser:
         )
 
     async def download_and_unpack(self, date: dt.date = dt.date.today()):
-        transactions, inputs, outputs, addresses = await self.download_all_by_date(date)
-        with open(self._download_dir / "transactions" / f"blockchair_bitcoin_transactions_{date.strftime('%Y%m%d')}.tsv", "wb") as f:
-            f.write(transactions)
-        with open(self._download_dir / "inputs" / f"blockchair_bitcoin_inputs_{date.strftime('%Y%m%d')}.tsv", "wb") as f:
-            f.write(inputs)
-        with open(self._download_dir / "outputs" / f"blockchair_bitcoin_outputs_{date.strftime('%Y%m%d')}.tsv", "wb") as f:
-            f.write(outputs)
-        with open(self._download_dir / "addresses" / f"blockchair_bitcoin_addresses_{date.strftime('%Y%m%d')}.tsv", "wb") as f:
-            f.write(addresses)
+        # у blockchair есть ограничение, поэтому от асинхронной загрузки нет толку
+        # transactions, inputs, outputs, addresses = await self.download_all_by_date(date)
+
+        transactions = await self.download_transactions(date)
+        transactions.seek(0)
+
+        with (gzip.open(transactions) as gzip_file,
+              open(self._download_dir /
+                   "transactions" /
+                   f"blockchair_bitcoin_transactions_{date.strftime('%Y%m%d')}.tsv", "wb") as f):
+            f.write(gzip_file.read())
+
+        inputs = await self.download_inputs(date)
+        inputs.seek(0)
+
+        with (gzip.open(inputs) as gzip_file,
+              open(self._download_dir / "inputs" / f"blockchair_bitcoin_inputs_{date.strftime('%Y%m%d')}.tsv",
+                   "wb") as f):
+            f.write(gzip_file.read())
+
+        outputs = await self.download_outputs(date)
+        outputs.seek(0)
+
+        with (gzip.open(outputs) as gzip_file,
+              open(self._download_dir / "outputs" / f"blockchair_bitcoin_outputs_{date.strftime('%Y%m%d')}.tsv",
+                   "wb") as f):
+            f.write(gzip_file.read())
+
+        addresses = await self.download_addresses(date)
+        addresses.seek(0)
+
+        with (gzip.open(addresses) as gzip_file,
+              open(self._download_dir / "addresses" / f"blockchair_bitcoin_addresses_{date.strftime('%Y%m%d')}.tsv",
+                   "wb") as f):
+            f.write(gzip_file.read())
 
     async def start_downloader_process(self):
         """Запустить процесс для скачивания данных"""
+
         async def _worker():
             while True:
                 dt_now = dt.datetime.now().astimezone(tz=dt.timezone.utc)
@@ -83,6 +112,9 @@ class BlockchairParser:
         mp.start()
 
         return mp
+
+    async def insert_data_to_db(self):
+        pass
 
 
 async def main():
