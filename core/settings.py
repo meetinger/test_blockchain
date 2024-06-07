@@ -19,20 +19,13 @@ class Settings(BaseSettings):
     DB_NEO4J_PASS: str
     DB_NEO4J_NAME: str
 
-    REDIS_HOST: str
-    REDIS_PORT: int
-    REDIS_USER: str
-    REDIS_PASS: str
-
-    TOKEN_UPDATE_TIME: int
-
     LOG_LEVEL: int = logging.INFO
 
     BLOCKCHAIR_TOKEN: str = None
 
     @property
     def neo4j_url(self):
-        return f"bolt://{self.DB_NEO4J_HOST}:{self.DB_NEO4J_PORT}/{self.DB_NEO4J_NAME}"
+        return f"bolt://{self.DB_NEO4J_USER}:{self.DB_NEO4J_PASS}@{self.DB_NEO4J_HOST}:{self.DB_NEO4J_PORT}/{self.DB_NEO4J_NAME}"
 
     @property
     def db_url(self):

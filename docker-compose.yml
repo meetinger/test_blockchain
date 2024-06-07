@@ -1,0 +1,19 @@
+services:
+  neo4j:
+    container_name: neo4j
+    image: neo4j:latest
+    environment:
+      - NEO4J_AUTH=${DB_NEO4J_USER}/${DB_NEO4J_PASS}
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
+      - NEO4J_dbms_default__database=${DB_NEO4J_NAME}
+      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+    volumes:
+      - ./neo4j_db/data:/data
+      - ./neo4j_db/logs:/logs
+      - ./neo4j_db/import:/var/lib/neo4j/import
+      - ./neo4j_db/plugins:/plugins
+    ports:
+      - ${DB_NEO4J_PORT_ADMIN}:7474
+      - ${DB_NEO4J_PORT}:7687

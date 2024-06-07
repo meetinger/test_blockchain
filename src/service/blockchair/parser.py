@@ -7,6 +7,9 @@ from multiprocessing import Process
 from pathlib import Path
 
 import httpx
+import pandas as pd
+
+from db.neo4j_models.models import Address, Transaction
 
 
 class BlockchairParser:
@@ -119,15 +122,54 @@ class BlockchairParser:
 
         return mp
 
-    async def insert_data_to_db(self):
-        pass
+    def parse_data_to_df(self, date: dt.date):
+        inputs = pd.read_csv(self._download_dir / "inputs" / f"blockchair_bitcoin_inputs_{date.strftime('%Y%m%d')}.tsv", sep="\t")
+        outputs = pd.read_csv(self._download_dir / "outputs" / f"blockchair_bitcoin_outputs_{date.strftime('%Y%m%d')}.tsv", sep="\t")
+        transactions = pd.read_csv(self._download_dir / "transactions" / f"blockchair_bitcoin_transactions_{date.strftime('%Y%m%d')}.tsv", sep="\t")
+        return inputs, outputs, transactions
 
+    @classmethod
+    async def insert_data_to_db(cls, inputs_df: pd.DataFrame, outputs_df: pd.DataFrame, transactions_df: pd.DataFrame):
+        print('start insert')
+        addresses = {}
+        for recipient in pd.concat([inputs_df['recipient'], outputs_df['recipient']]).unique():
+            print('recipient', recipient)
+            addr_node = await Address.get_or_create({'address': recipient})
+            addresses[recipient] = addr_node
+
+        for _, row in transactions_df.iterrows():
+            print('row', row)
+            tx_hash = row['hash']
+
+            output_rows = outputs_df[outputs_df['transaction_hash'] == tx_hash]
+
+            input_rows = inputs_df[inputs_df['transaction_hash'] == tx_hash]
+            t_rows = input_rows + output_rows
+
+            for _, t_row in t_rows.iterrows():
+                print('t_row', t_row)
+                addr = addresses[t_row['recipient']]
+                tx = Transaction(transaction_hash=tx_hash, value=t_row['value'], block_id=t_row['block_id'],
+                                 time=t_row['time'])
+                await addr.inputs.connect(tx)
+
+
+
+
+async def download_all_by_date(date: dt.date):
+    parser = BlockchairParser(blockchair_api_key=None)
+    await parser.download_and_unpack(date)
 
 async def main():
     parser = BlockchairParser(blockchair_api_key=None)
-    await parser.download_and_unpack(date=dt.date(2009, 4, 21))
-    # mp = await parser.start_downloader_process()
-    # await mp.join()
+
+    inputs_df, outputs_df, transactions_df = parser.parse_data_to_df(dt.date(2024, 6, 6))
+
+    print(inputs_df.head().to_string())
+    print(outputs_df.head().to_string())
+    print(transactions_df.head().to_string())
+
+    await parser.insert_data_to_db(inputs_df, outputs_df, transactions_df)
 
 
 if __name__ == "__main__":
