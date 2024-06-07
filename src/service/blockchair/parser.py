@@ -131,34 +131,50 @@ class BlockchairParser:
     @classmethod
     async def insert_data_to_db(cls, inputs_df: pd.DataFrame, outputs_df: pd.DataFrame, transactions_df: pd.DataFrame):
         print('start insert')
-        addresses = {}
-        for recipient in pd.concat([inputs_df['recipient'], outputs_df['recipient']]).unique():
-            print('recipient', recipient)
-            addr_node = await Address.get_or_create({'address': recipient})
-            addresses[recipient] = addr_node
+        all_recipients = pd.concat([inputs_df['recipient'], outputs_df['recipient']]).unique()
+        print('all_recipients', all_recipients)
+        address_values = [{'address': recipient} for recipient in all_recipients]
+        print('address_values', address_values[:10])
+        addresses = await Address.get_or_create(*address_values[:100], columns=['address'])
+        print('addresses', addresses[:10])
 
-        for _, row in transactions_df.iterrows():
-            print('row', row)
-            tx_hash = row['hash']
+        addresses_dct = {address.address: address for address in addresses}
 
-            output_rows = outputs_df[outputs_df['transaction_hash'] == tx_hash]
+        # t_rows = pd.concat([inputs_df, outputs_df])
 
-            input_rows = inputs_df[inputs_df['transaction_hash'] == tx_hash]
-            t_rows = input_rows + output_rows
+        for _, i_row in inputs_df.iterrows():
+            addr = await Address.nodes.get_or_none(address=i_row['recipient'])
+            if addr:
+                print('addr', addr)
+                tx = await Transaction.nodes.get_or_none(transaction_hash=i_row['transaction_hash'])
+                if tx is None:
+                    tx = Transaction(
+                        transaction_hash=i_row['transaction_hash'],
+                        value=i_row['value'],
+                        block_id=i_row['block_id'],
+                        time=i_row['time']
+                    )
+                    await tx.save()
+                await tx.outputs.connect(addr)
 
-            for _, t_row in t_rows.iterrows():
-                print('t_row', t_row)
-                addr = addresses[t_row['recipient']]
-                tx = Transaction(transaction_hash=tx_hash, value=t_row['value'], block_id=t_row['block_id'],
-                                 time=t_row['time'])
-                await addr.inputs.connect(tx)
-
-
-
+        for _, o_row in outputs_df.iterrows():
+            addr = await Address.nodes.get_or_none(address=o_row['recipient'])
+            if addr:
+                tx = await Transaction.nodes.get_or_none(transaction_hash=o_row['transaction_hash'])
+                if tx is None:
+                    tx = Transaction(
+                        transaction_hash=o_row['transaction_hash'],
+                        value=o_row['value'],
+                        block_id=o_row['block_id'],
+                        time=o_row['time']
+                    )
+                    await tx.save()
+                await tx.inputs.connect(tx)
 
 async def download_all_by_date(date: dt.date):
     parser = BlockchairParser(blockchair_api_key=None)
     await parser.download_and_unpack(date)
+
 
 async def main():
     parser = BlockchairParser(blockchair_api_key=None)

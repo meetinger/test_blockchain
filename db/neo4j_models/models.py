@@ -1,7 +1,7 @@
 import asyncio
 
 from neomodel import StringProperty, IntegerProperty, RelationshipTo, RelationshipFrom, FloatProperty, \
-    StructuredRel, AsyncStructuredNode, adb
+    StructuredRel, AsyncStructuredNode, adb, AsyncRelationshipFrom, AsyncRelationshipTo
 from neomodel import config as neo_config
 
 from core.settings import settings
@@ -11,42 +11,30 @@ neo_config.DATABASE_URL = settings.neo4j_url
 class Address(AsyncStructuredNode):
     address = StringProperty(unique_index=True)
 
-    inputs = RelationshipFrom('Transaction', 'INPUT')
-    outputs = RelationshipTo('Transaction', 'OUTPUT')
+    transactions = AsyncRelationshipFrom('Transaction', 'TO_ADDRESS')
 
 
 class Transaction(AsyncStructuredNode):
-    transaction_hash = StringProperty()
+    transaction_hash = StringProperty(unique_index=True)
     value = FloatProperty()
     block_id = IntegerProperty()
-    time = IntegerProperty()
+    time = StringProperty()
+
+    inputs = AsyncRelationshipFrom('Address', 'TO_TRANSACTION')
+    outputs = AsyncRelationshipTo('Address', 'TO_TRANSACTION')
 
     @classmethod
-    async def find_transactions(cls, address):
-        query = """
-        MATCH (a:Address {address: $address})-[:INPUT]->(tx:Transaction)<-[:OUTPUT]-(b:Address)
-        RETURN tx
-        UNION
-        MATCH (a:Address {address: $address})<-[:OUTPUT]-(tx:Transaction)-[:INPUT]->(b:Address)
-        RETURN tx
-        """
-        results, meta = await adb.cypher_query(query, {'address': address})
-        return [Transaction.inflate(row[0]) for row in results]
+    async def find_transactions(cls, address: str):
+        addr_node = await Address.nodes.get_or_none(address=address)
+        if not addr_node:
+            return None
 
+        transactions = await addr_node.transactions.all()
+        return transactions
 
-class Inputs(AsyncStructuredNode):
-    value = FloatProperty()
-    time = IntegerProperty()
-    recipient = StringProperty()
-
-
-class Outputs(AsyncStructuredNode):
-    value = FloatProperty()
-    time = IntegerProperty()
-    recipient = StringProperty()
 
 async def main():
-    res = await Transaction.find_transactions('bc1q052rew5ade79c62fzh9wuxh03lfrh65dg2a5kr')
+    res = await Transaction.find_transactions('bc1qyqjx4m2sweyj3lh6jxx4e5z2xczkarq8lglpj8')
     print(res)
 
 if __name__ == "__main__":
