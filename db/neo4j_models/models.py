@@ -66,26 +66,3 @@ class Transaction(AsyncStructuredNode):
             outputs=[o.address for o in await self.outputs.all()],
             time=self.time
         )
-
-
-
-
-async def main():
-    # node = await Address.nodes.get_or_none(address='bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h')
-    # # print(res)
-    # res = await Address.find_transactions('bc1qf43tdrym26qlz8rg06f88wg35n27uhcf29zs4f')
-    #
-    #
-    # pprint([str(i) for i in await node.transactions])
-
-
-    # print('balance:', await node.balance)
-
-    tr = await Transaction.nodes.get_or_none(
-        transaction_hash='923c1db0664683b5cdcd5b5c656b0a8ae7bbd8f6638ce2f34ac59924ce65efc6'
-    )
-    print('inputs:', await tr.inputs.all())
-    print('outputs:', await tr.outputs.all())
-
-if __name__ == "__main__":
-    asyncio.run(main())
