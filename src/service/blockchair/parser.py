@@ -32,14 +32,14 @@ class BlockchairParser:
         headers = {}
         if self._blockchair_api_key is not None:
             url = f"{url}?key={self._blockchair_api_key}"
-            print(url)
+            main_logger.info(url)
 
         async with httpx.AsyncClient() as client:
             while response_code != 200 and attempts < 5:
                 attempts += 1
                 response = await client.get(url, headers=headers)
                 response_code = response.status_code
-                print(f"Response code: {response_code}")
+                main_logger.info(f"Response code: {response_code}")
             if response_code != 200:
                 raise Exception(f"Failed to download file: {url}")
             file.write(response.content)
@@ -115,9 +115,45 @@ class BlockchairParser:
 
         main_logger.info("Unpacking outputs done")
 
+    async def download_and_insert_to_db(self, date: dt.date):
+        main_logger.info(f"Downloading data for {date}")
+        await self.download_and_unpack(date)
+        main_logger.info(f"Data for {date} downloaded")
+        main_logger.info("Inserting data to db...")
+        await self.insert_data_to_db(*self.parse_data_to_df(date))
+        main_logger.info("Data inserted to db")
 
-    async def start_downloader_process(self):
+    def stop_downloader_process(self):
+        """Остановить процесс для скачивания данных"""
+        if self._process is not None:
+            self._process.terminate()
+
+    def force_download_and_insert_to_db(self):
+        self.stop_downloader_process()
+
+        main_logger.info("Force download and insert to db...")
+
+        date = dt.datetime.now().astimezone(tz=dt.timezone.utc).date()
+        async def _worker():
+            await self.download_and_insert_to_db(date)
+
+        def _worker_wrapper():
+            asyncio.run(_worker())
+
+        self._process = Process(target=_worker_wrapper)
+        self._process.start()
+        self._process.join()
+
+        main_logger.info("Force download and insert to db done")
+        main_logger.info("Start blockchair downloader process...")
+
+        self.start_downloader_process()
+
+        return self._process
+
+    def start_downloader_process(self):
         """Запустить процесс для скачивания данных"""
+        self.stop_downloader_process()
 
         main_logger.info("Start blockchair downloader")
 
@@ -127,16 +163,11 @@ class BlockchairParser:
                 dt_now = dt.datetime.now().astimezone(tz=dt.timezone.utc)
                 main_logger.info("Checking for new day...")
                 if dt_now_last.day != dt_now.day:
-                    main_logger.info(f"Downloading data for {dt_now.date()}")
-                    await self.download_and_unpack(dt_now.date())
-                    main_logger.info(f"Data for {dt_now.date()} downloaded")
-                    main_logger.info("Inserting data to db...")
-                    await self.insert_data_to_db(*self.parse_data_to_df(dt_now.date()))
-                    main_logger.info("Data inserted to db")
+                    await self.download_and_insert_to_db(dt_now.date())
                 else:
                     main_logger.info("No new day, sleeping...")
                 dt_now_last = dt_now
-                await asyncio.sleep(30)
+                await asyncio.sleep(60)
 
         def _worker_wrapper():
             asyncio.run(_worker())
@@ -220,24 +251,4 @@ class BlockchairParser:
                 break
 
 
-
-async def download_all_by_date(date: dt.date):
-    parser = BlockchairParser(blockchair_api_key=None)
-    await parser.download_and_unpack(date)
-
-
-async def main():
-    main_logger.info("Start blockchair parser...")
-    parser = BlockchairParser(blockchair_api_key=None)
-
-    inputs_df, outputs_df = parser.parse_data_to_df(dt.date(2024, 6, 6))
-
-    print(inputs_df.head().to_string())
-    print(outputs_df.head().to_string())
-    # print(transactions_df.head().to_string())
-
-    await parser.insert_data_to_db(inputs_df, outputs_df, break_limit=10000)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+blockchair_parser = BlockchairParser()
