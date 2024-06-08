@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / '.env')
 
     HTTP_PORT: int
-    ROOT_PATH: str
+    ROOT_PATH: str | None = None
 
     DB_NEO4J_HOST: str
     DB_NEO4J_PORT: int

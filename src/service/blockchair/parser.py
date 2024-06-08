@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import pandas as pd
 
+from core.log import main_logger
 from db.neo4j_models.models import Address, Transaction
 
 
@@ -18,6 +19,7 @@ class BlockchairParser:
         self._download_dir = download_dir
         self._download_dir.mkdir(parents=True, exist_ok=True)
         self._blockchair_api_key = blockchair_api_key
+        self._process = None
 
         (download_dir / "transactions").mkdir(parents=True, exist_ok=True)
         (download_dir / "inputs").mkdir(parents=True, exist_ok=True)
@@ -71,77 +73,115 @@ class BlockchairParser:
         # у blockchair есть ограничение, поэтому от асинхронной загрузки нет толку
         # transactions, inputs, outputs, addresses = await self.download_all_by_date(date)
 
+        main_logger.info(f"Downloading data for {date}...")
+
+        main_logger.info("Downloading transactions...")
         transactions = await self.download_transactions(date)
         transactions.seek(0)
 
+        main_logger.info("Transactions downloaded")
+        main_logger.info("Unpacking transactions...")
         with (gzip.open(transactions) as gzip_file,
               open(self._download_dir /
                    "transactions" /
                    f"blockchair_bitcoin_transactions_{date.strftime('%Y%m%d')}.tsv", "wb") as f):
             f.write(gzip_file.read())
 
+        main_logger.info("Unpacking transactions done")
+
+        main_logger.info("Downloading inputs...")
         inputs = await self.download_inputs(date)
         inputs.seek(0)
+        main_logger.info("Inputs downloaded")
+        main_logger.info("Unpacking inputs...")
 
         with (gzip.open(inputs) as gzip_file,
               open(self._download_dir / "inputs" / f"blockchair_bitcoin_inputs_{date.strftime('%Y%m%d')}.tsv",
                    "wb") as f):
             f.write(gzip_file.read())
 
+        main_logger.info("Unpacking inputs done")
+
+        main_logger.info("Downloading outputs...")
+
         outputs = await self.download_outputs(date)
         outputs.seek(0)
 
+        main_logger.info("Outputs downloaded")
         with (gzip.open(outputs) as gzip_file,
               open(self._download_dir / "outputs" / f"blockchair_bitcoin_outputs_{date.strftime('%Y%m%d')}.tsv",
                    "wb") as f):
             f.write(gzip_file.read())
 
-        addresses = await self.download_addresses(date)
-        addresses.seek(0)
+        main_logger.info("Unpacking outputs done")
 
-        with (gzip.open(addresses) as gzip_file,
-              open(self._download_dir / "addresses" / f"blockchair_bitcoin_addresses_{date.strftime('%Y%m%d')}.tsv",
-                   "wb") as f):
-            f.write(gzip_file.read())
 
     async def start_downloader_process(self):
         """Запустить процесс для скачивания данных"""
 
+        main_logger.info("Start blockchair downloader")
+
         async def _worker():
+            dt_now_last = dt.datetime.now().astimezone(tz=dt.timezone.utc)
             while True:
                 dt_now = dt.datetime.now().astimezone(tz=dt.timezone.utc)
-                if dt_now.hour == 23 and dt_now.minute == 59 and dt_now.second == 59:
+                main_logger.info("Checking for new day...")
+                if dt_now_last.day != dt_now.day:
+                    main_logger.info(f"Downloading data for {dt_now.date()}")
                     await self.download_and_unpack(dt_now.date())
+                    main_logger.info(f"Data for {dt_now.date()} downloaded")
+                    main_logger.info("Inserting data to db...")
+                    await self.insert_data_to_db(*self.parse_data_to_df(dt_now.date()))
+                    main_logger.info("Data inserted to db")
+                else:
+                    main_logger.info("No new day, sleeping...")
+                dt_now_last = dt_now
                 await asyncio.sleep(30)
 
         def _worker_wrapper():
             asyncio.run(_worker())
 
-        mp = Process(target=_worker_wrapper)
-        mp.start()
+        self._process = Process(target=_worker_wrapper)
+        self._process.start()
 
-        return mp
+        return self._process
 
     def parse_data_to_df(self, date: dt.date):
         inputs = pd.read_csv(self._download_dir / "inputs" / f"blockchair_bitcoin_inputs_{date.strftime('%Y%m%d')}.tsv", sep="\t")
         outputs = pd.read_csv(self._download_dir / "outputs" / f"blockchair_bitcoin_outputs_{date.strftime('%Y%m%d')}.tsv", sep="\t")
-        transactions = pd.read_csv(self._download_dir / "transactions" / f"blockchair_bitcoin_transactions_{date.strftime('%Y%m%d')}.tsv", sep="\t")
-        return inputs, outputs, transactions
+        # transactions = pd.read_csv(self._download_dir / "transactions" / f"blockchair_bitcoin_transactions_{date.strftime('%Y%m%d')}.tsv", sep="\t")
+        return inputs, outputs
 
     @classmethod
-    async def insert_data_to_db(cls, inputs_df: pd.DataFrame, outputs_df: pd.DataFrame, transactions_df: pd.DataFrame):
-        all_recipients = pd.concat([inputs_df['recipient'], outputs_df['recipient']]).unique()
-        address_values = [{'address': recipient} for recipient in all_recipients]
-        addresses = await Address.get_or_create(*address_values[:500], columns=['address'])
+    async def insert_data_to_db(cls, inputs_df: pd.DataFrame, outputs_df: pd.DataFrame):
+        """
+        Метод загрузки данных в базу данных.
+        Это можно оптимизировать, используя различные операции с pandas и asyncio
+        Также можно загружать данные батчами и тд.
+        """
 
-        print(f"Addresses created or fetched: {addresses}")
+
+        main_logger.info("Inserting data to db...")
+
+        all_recipients = pd.concat([inputs_df['recipient'], outputs_df['recipient']]).unique()
+
+        main_logger.info(f"Creating addresses for {len(all_recipients)} recipients...")
+
+        address_values = [{'address': recipient} for recipient in all_recipients]
+
+        main_logger.info("Fetching or creating addresses...")
+        addresses = []
+        for i in range(0, len(address_values), 100):
+            main_logger.info(f"Fetching or creating addresses from {i} to {i + 100}...")
+            addresses.extend(await Address.get_or_create(*address_values[i:i + 100], columns=['address']))
+
+        main_logger.info(f"Addresses created or fetched: {addresses}")
 
         address_dict = {address.address: address for address in addresses}
 
         for _, i_row in inputs_df.iterrows():
             addr = address_dict.get(i_row['recipient'])
             if addr:
-                print(f"Processing input: {i_row}")
                 tx = await Transaction.nodes.get_or_none(transaction_hash=i_row['transaction_hash'])
                 if not tx:
                     tx = Transaction(
@@ -151,16 +191,13 @@ class BlockchairParser:
                         time=i_row['time']
                     )
                     await tx.save()
-                    print(f"Transaction created: {tx}")
+                    main_logger.info(f"Transaction created: {tx}")
 
                 await tx.inputs.connect(addr)
-                print(f"Connected {addr} to inputs of {tx}")
-                print(f"All transactions for {addr.address}: {await addr.transactions.all()}")
 
         for _, o_row in outputs_df.iterrows():
             addr = address_dict.get(o_row['recipient'])
             if addr:
-                print(f"Processing output: {o_row}")
                 tx = await Transaction.nodes.get_or_none(transaction_hash=o_row['transaction_hash'])
                 if not tx:
                     tx = Transaction(
@@ -170,11 +207,9 @@ class BlockchairParser:
                         time=o_row['time']
                     )
                     await tx.save()
-                    print(f"Transaction created: {tx}")
+                    main_logger.info(f"Transaction created: {tx}")
 
                 await tx.outputs.connect(addr)
-                print(f"Connected {addr} to outputs of {tx}")
-                print(f"All transactions for {addr.address}: {await addr.transactions.all()}")
 
 
 async def download_all_by_date(date: dt.date):
@@ -183,15 +218,16 @@ async def download_all_by_date(date: dt.date):
 
 
 async def main():
+    main_logger.info("Start blockchair parser...")
     parser = BlockchairParser(blockchair_api_key=None)
 
-    inputs_df, outputs_df, transactions_df = parser.parse_data_to_df(dt.date(2024, 6, 6))
+    inputs_df, outputs_df = parser.parse_data_to_df(dt.date(2024, 6, 6))
 
     print(inputs_df.head().to_string())
     print(outputs_df.head().to_string())
-    print(transactions_df.head().to_string())
+    # print(transactions_df.head().to_string())
 
-    await parser.insert_data_to_db(inputs_df, outputs_df, transactions_df)
+    await parser.insert_data_to_db(inputs_df, outputs_df)
 
 
 if __name__ == "__main__":
