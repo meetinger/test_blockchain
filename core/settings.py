@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: int = logging.INFO
 
-    BLOCKCHAIR_TOKEN: str = None
+    BLOCKCHAIR_TOKEN: str | None = None
 
     @property
     def neo4j_url(self):

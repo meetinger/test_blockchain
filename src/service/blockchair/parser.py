@@ -130,24 +130,21 @@ class BlockchairParser:
 
     @classmethod
     async def insert_data_to_db(cls, inputs_df: pd.DataFrame, outputs_df: pd.DataFrame, transactions_df: pd.DataFrame):
-        print('start insert')
         all_recipients = pd.concat([inputs_df['recipient'], outputs_df['recipient']]).unique()
-        print('all_recipients', all_recipients)
         address_values = [{'address': recipient} for recipient in all_recipients]
-        print('address_values', address_values[:10])
-        addresses = await Address.get_or_create(*address_values[:100], columns=['address'])
-        print('addresses', addresses[:10])
+        addresses = await Address.get_or_create(*address_values[:500], columns=['address'])
 
-        addresses_dct = {address.address: address for address in addresses}
+        print(addresses)
 
-        # t_rows = pd.concat([inputs_df, outputs_df])
+        address_dict = {address.address: address for address in addresses}
+
 
         for _, i_row in inputs_df.iterrows():
-            addr = await Address.nodes.get_or_none(address=i_row['recipient'])
+            addr = address_dict.get(i_row['recipient'])
             if addr:
-                print('addr', addr)
+                print(addr)
                 tx = await Transaction.nodes.get_or_none(transaction_hash=i_row['transaction_hash'])
-                if tx is None:
+                if not tx:
                     tx = Transaction(
                         transaction_hash=i_row['transaction_hash'],
                         value=i_row['value'],
@@ -155,13 +152,15 @@ class BlockchairParser:
                         time=i_row['time']
                     )
                     await tx.save()
-                await tx.outputs.connect(addr)
+                await tx.inputs.connect(addr)
+                print(await tx.inputs.all())
+                print(await addr.transactions.all())
 
         for _, o_row in outputs_df.iterrows():
-            addr = await Address.nodes.get_or_none(address=o_row['recipient'])
+            addr = address_dict.get(o_row['recipient'])
             if addr:
                 tx = await Transaction.nodes.get_or_none(transaction_hash=o_row['transaction_hash'])
-                if tx is None:
+                if not tx:
                     tx = Transaction(
                         transaction_hash=o_row['transaction_hash'],
                         value=o_row['value'],
@@ -169,7 +168,8 @@ class BlockchairParser:
                         time=o_row['time']
                     )
                     await tx.save()
-                await tx.inputs.connect(tx)
+                await tx.outputs.connect(addr)
+
 
 async def download_all_by_date(date: dt.date):
     parser = BlockchairParser(blockchair_api_key=None)
