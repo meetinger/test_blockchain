@@ -4,7 +4,7 @@ from neomodel import (StringProperty, IntegerProperty, FloatProperty, AsyncStruc
 from neomodel import config as neo_config
 
 from core.settings import settings
-
+from src.pydantic_models.btc_models import TransactionModel, AddressModel
 neo_config.DATABASE_URL = settings.neo4j_url
 
 
@@ -30,13 +30,14 @@ class Address(AsyncStructuredNode):
 
         return balance
 
-    async def to_orm(self):
-        dct = {
-            'address': self.address,
-            'balance': await self.balance,
-            'transactions': self.transactions
-        }
+    async def to_pydantic(self):
+        address_model = AddressModel(
+            address=self.address,
+            balance=await self.balance,
+            transactions=[await t.to_pydantic() for t in await self.transactions.all()]
+        )
 
+        return address_model
 
     def __str__(self):
         return f"Address(address={self.address})"
@@ -56,6 +57,15 @@ class Transaction(AsyncStructuredNode):
                 f"value={self.value}, block_id={self.block_id}, "
                 f"time={self.time})")
 
+    async def to_pydantic(self):
+        return TransactionModel(
+            transaction_hash=self.transaction_hash,
+            value=self.value,
+            block_id=self.block_id,
+            inputs=[i.address for i in await self.inputs.all()],
+            outputs=[o.address for o in await self.outputs.all()],
+            time=self.time
+        )
 
 
 

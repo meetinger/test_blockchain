@@ -8,7 +8,7 @@ services:
       - NEO4J_apoc_import_file_enabled=true
       - NEO4J_apoc_import_file_use__neo4j__config=true
       - NEO4J_dbms_default__database=${DB_NEO4J_NAME}
-      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+      - NEO4J_PLUGINS=["apoc", "graph-data-science", "bloom"]
     volumes:
       - ./neo4j_db/data:/data
       - ./neo4j_db/logs:/logs

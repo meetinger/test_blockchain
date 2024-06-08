@@ -153,7 +153,7 @@ class BlockchairParser:
         return inputs, outputs
 
     @classmethod
-    async def insert_data_to_db(cls, inputs_df: pd.DataFrame, outputs_df: pd.DataFrame):
+    async def insert_data_to_db(cls, inputs_df: pd.DataFrame, outputs_df: pd.DataFrame, break_limit = 10000):
         """
         Метод загрузки данных в базу данных.
         Это можно оптимизировать, используя различные операции с pandas и asyncio
@@ -172,6 +172,8 @@ class BlockchairParser:
         main_logger.info("Fetching or creating addresses...")
         addresses = []
         for i in range(0, len(address_values), 100):
+            if break_limit and i > break_limit:
+                break
             main_logger.info(f"Fetching or creating addresses from {i} to {i + 100}...")
             addresses.extend(await Address.get_or_create(*address_values[i:i + 100], columns=['address']))
 
@@ -179,7 +181,7 @@ class BlockchairParser:
 
         address_dict = {address.address: address for address in addresses}
 
-        for _, i_row in inputs_df.iterrows():
+        for idx, (_, i_row) in enumerate(inputs_df.iterrows()):
             addr = address_dict.get(i_row['recipient'])
             if addr:
                 tx = await Transaction.nodes.get_or_none(transaction_hash=i_row['transaction_hash'])
@@ -191,11 +193,14 @@ class BlockchairParser:
                         time=i_row['time']
                     )
                     await tx.save()
-                    main_logger.info(f"Transaction created: {tx}")
 
                 await tx.inputs.connect(addr)
+            if idx % 500 == 0:
+                main_logger.info(f"Inputs processed: {idx} of {len(inputs_df)}")
+            if break_limit and idx > break_limit:
+                break
 
-        for _, o_row in outputs_df.iterrows():
+        for idx, (_, o_row) in enumerate(outputs_df.iterrows()):
             addr = address_dict.get(o_row['recipient'])
             if addr:
                 tx = await Transaction.nodes.get_or_none(transaction_hash=o_row['transaction_hash'])
@@ -207,9 +212,13 @@ class BlockchairParser:
                         time=o_row['time']
                     )
                     await tx.save()
-                    main_logger.info(f"Transaction created: {tx}")
 
                 await tx.outputs.connect(addr)
+            if idx % 500 == 0:
+                main_logger.info(f"Outputs processed: {idx} of {len(outputs_df)}")
+            if break_limit and idx > break_limit:
+                break
+
 
 
 async def download_all_by_date(date: dt.date):
@@ -227,7 +236,7 @@ async def main():
     print(outputs_df.head().to_string())
     # print(transactions_df.head().to_string())
 
-    await parser.insert_data_to_db(inputs_df, outputs_df)
+    await parser.insert_data_to_db(inputs_df, outputs_df, break_limit=10000)
 
 
 if __name__ == "__main__":
