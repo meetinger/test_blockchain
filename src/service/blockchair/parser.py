@@ -134,15 +134,14 @@ class BlockchairParser:
         address_values = [{'address': recipient} for recipient in all_recipients]
         addresses = await Address.get_or_create(*address_values[:500], columns=['address'])
 
-        print(addresses)
+        print(f"Addresses created or fetched: {addresses}")
 
         address_dict = {address.address: address for address in addresses}
-
 
         for _, i_row in inputs_df.iterrows():
             addr = address_dict.get(i_row['recipient'])
             if addr:
-                print(addr)
+                print(f"Processing input: {i_row}")
                 tx = await Transaction.nodes.get_or_none(transaction_hash=i_row['transaction_hash'])
                 if not tx:
                     tx = Transaction(
@@ -152,13 +151,16 @@ class BlockchairParser:
                         time=i_row['time']
                     )
                     await tx.save()
+                    print(f"Transaction created: {tx}")
+
                 await tx.inputs.connect(addr)
-                print(await tx.inputs.all())
-                print(await addr.transactions.all())
+                print(f"Connected {addr} to inputs of {tx}")
+                print(f"All transactions for {addr.address}: {await addr.transactions.all()}")
 
         for _, o_row in outputs_df.iterrows():
             addr = address_dict.get(o_row['recipient'])
             if addr:
+                print(f"Processing output: {o_row}")
                 tx = await Transaction.nodes.get_or_none(transaction_hash=o_row['transaction_hash'])
                 if not tx:
                     tx = Transaction(
@@ -168,7 +170,11 @@ class BlockchairParser:
                         time=o_row['time']
                     )
                     await tx.save()
+                    print(f"Transaction created: {tx}")
+
                 await tx.outputs.connect(addr)
+                print(f"Connected {addr} to outputs of {tx}")
+                print(f"All transactions for {addr.address}: {await addr.transactions.all()}")
 
 
 async def download_all_by_date(date: dt.date):

@@ -16,11 +16,10 @@ class Address(AsyncStructuredNode):
     @classmethod
     async def find_transactions(cls, address: str):
         addr_node = await cls.nodes.get_or_none(address=address)
-        print(addr_node)
-        if not addr_node:
+        if addr_node is None:
             return None
-        transactions = await addr_node.transactions.all()
-        return transactions
+        return await addr_node.transactions.all()
+
 
 class Transaction(AsyncStructuredNode):
     transaction_hash = StringProperty(unique_index=True)
@@ -28,14 +27,15 @@ class Transaction(AsyncStructuredNode):
     block_id = IntegerProperty()
     time = StringProperty()
 
-    inputs = AsyncRelationshipFrom('Address', 'INPUT')
-    outputs = AsyncRelationshipTo('Address', 'OUTPUT')
+    inputs = AsyncRelationshipTo('Address', 'TO_ADDRESS')
+    outputs = AsyncRelationshipTo('Address', 'TO_ADDRESS')
+
 
 
 async def main():
     # res = await Transaction.nodes
     # print(res)
-    res = await Address.find_transactions('bc1q7cyrfmck2ffu2ud3rn5l5a8yv6f0chkp0zpemf')
+    res = await Address.find_transactions('bc1qf43tdrym26qlz8rg06f88wg35n27uhcf29zs4f')
     print(res)
 
 if __name__ == "__main__":
