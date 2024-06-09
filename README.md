@@ -30,9 +30,12 @@ https://drive.google.com/file/d/14SsxlYpQbH9Xw3rXb8HUM39urNRUTIhz/view?usp=shari
 ```
 Также в проекте имеется скрипт для загрузки тестовых данных в БД:
 `src/service/blockchair/test_insert.py`
+
 Запускать его только при поднятых контейнерах и установленных зависимостях через
 `poetry install` из корня проекта
+
 Пример адреса из тестового дампа: `bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h`
+
 Пример тестовой транзакции: `77a72bf7c263c4cd30e2d48fb47e7fe925941336709df305cfcdfa531bd31b32`
 
 ## Фичи:
