@@ -3,3 +3,6 @@
 
 poetry.lock
 
+neo4j_db
+
+downloads/*
