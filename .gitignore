@@ -3,8 +3,6 @@
 
 poetry.lock
 
-.env
-
 neo4j_db
 
 downloads/*

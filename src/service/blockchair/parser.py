@@ -10,6 +10,7 @@ import httpx
 import pandas as pd
 
 from core.log import main_logger
+from core.settings import settings
 from db.neo4j_models.models import Address, Transaction
 
 
@@ -184,13 +185,12 @@ class BlockchairParser:
         return inputs, outputs
 
     @classmethod
-    async def insert_data_to_db(cls, inputs_df: pd.DataFrame, outputs_df: pd.DataFrame, break_limit = 10000):
+    async def insert_data_to_db(cls, inputs_df: pd.DataFrame, outputs_df: pd.DataFrame, break_limit: int=10000):
         """
         Метод загрузки данных в базу данных.
         Это можно оптимизировать, используя различные операции с pandas и asyncio
         Также можно загружать данные батчами и тд.
         """
-
 
         main_logger.info("Inserting data to db...")
 
@@ -207,8 +207,6 @@ class BlockchairParser:
                 break
             main_logger.info(f"Fetching or creating addresses from {i} to {i + 100}...")
             addresses.extend(await Address.get_or_create(*address_values[i:i + 100], columns=['address']))
-
-        main_logger.info(f"Addresses created or fetched: {addresses}")
 
         address_dict = {address.address: address for address in addresses}
 
@@ -251,4 +249,4 @@ class BlockchairParser:
                 break
 
 
-blockchair_parser = BlockchairParser()
+blockchair_parser = BlockchairParser(download_dir=settings.BLOCKCHAIR_DOWNLOADS_DIR)

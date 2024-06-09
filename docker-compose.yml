@@ -16,4 +16,35 @@ services:
       - ./neo4j_db/plugins:/plugins
     ports:
       - ${DB_NEO4J_PORT_ADMIN}:7474
-      - ${DB_NEO4J_PORT}:7687
+      - ${DB_NEO4J_PORT_BOLT}:7687
+    networks:
+      - db_network
+    healthcheck:
+      test: wget http://localhost:${DB_NEO4J_PORT_BOLT} || exit 1
+      interval: 1s
+      timeout: 10s
+      retries: 20
+      start_period: 3s
+
+  fast_api_app:
+    build:
+      context: "."
+      dockerfile: Dockerfile
+    container_name: fast_api_app_container
+    restart: always
+    env_file:
+      - .env.docker
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - .:/docker_app
+    ports:
+      - ${HTTP_PORT}:${HTTP_PORT}
+    networks:
+      - db_network
+    command: python -m uvicorn core.app:app --host 0.0.0.0 --port ${HTTP_PORT}
+
+networks:
+  db_network:
+    driver: bridge
