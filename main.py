@@ -2,6 +2,7 @@ import uvicorn
 
 from core.settings import settings
 
+# запуск uvicorn
 if __name__ == "__main__":
     uvicorn.run(
         "core.app:app",

@@ -7,7 +7,8 @@ system_router = APIRouter(prefix="/system", tags=["system"])
 
 
 @system_router.post("/force-download-dump")
-async def get_system_status(background_tasks: BackgroundTasks):
+async def force_download_dump(background_tasks: BackgroundTasks):
+    """Принудительно запустить загрузку дампа с сайта blockchair"""
     def _worker():
         blockchair_parser.force_download_and_insert_to_db()
 

@@ -9,6 +9,7 @@ neo_config.DATABASE_URL = settings.neo4j_url
 
 
 class Address(AsyncStructuredNode):
+    """Address Node"""
     address = StringProperty(unique_index=True)
     transactions = AsyncRelationshipFrom('Transaction', 'TRANSACTION_RELATION')
 
@@ -31,6 +32,7 @@ class Address(AsyncStructuredNode):
         return balance
 
     async def to_pydantic(self):
+        """Метод перевода модели в pydantic модель"""
         address_model = AddressModel(
             address=self.address,
             balance=await self.balance,
@@ -44,6 +46,7 @@ class Address(AsyncStructuredNode):
 
 
 class Transaction(AsyncStructuredNode):
+    """Transaction Node"""
     transaction_hash = StringProperty(unique_index=True)
     value = FloatProperty()
     block_id = IntegerProperty()
@@ -58,6 +61,7 @@ class Transaction(AsyncStructuredNode):
                 f"time={self.time})")
 
     async def to_pydantic(self):
+        """Метод перевода модели в pydantic модель"""
         return TransactionModel(
             transaction_hash=self.transaction_hash,
             value=self.value,

@@ -15,6 +15,8 @@ from db.neo4j_models.models import Address, Transaction
 
 
 class BlockchairParser:
+    """Парсер данных с blockchair"""
+
     def __init__(self, download_dir: str = "downloads", blockchair_api_key: str = None) -> None:
         download_dir = Path(download_dir)
         self._download_dir = download_dir
@@ -28,6 +30,9 @@ class BlockchairParser:
         (download_dir / "addresses").mkdir(parents=True, exist_ok=True)
 
     async def _download_file(self, url: str, file: io.BytesIO = io.BytesIO()) -> io.BytesIO:
+        """Загрузить файл с blockchair"""
+
+        main_logger.info(f"Downloading file: {url}")
         response_code = None
         attempts = 0
         headers = {}
@@ -47,22 +52,27 @@ class BlockchairParser:
             return file
 
     async def download_transactions(self, date: dt.date) -> io.BytesIO:
+        """Загрузить файл с транзакциями"""
         url = f"https://gz.blockchair.com/bitcoin/transactions/blockchair_bitcoin_transactions_{date.strftime('%Y%m%d')}.tsv.gz"
         return await self._download_file(url)
 
     async def download_inputs(self, date: dt.date) -> io.BytesIO:
+        """Загрузить файл с входами"""
         url = f"https://gz.blockchair.com/bitcoin/inputs/blockchair_bitcoin_inputs_{date.strftime('%Y%m%d')}.tsv.gz"
         return await self._download_file(url)
 
     async def download_outputs(self, date: dt.date) -> io.BytesIO:
+        """Загрузить файл с выходами"""
         url = f"https://gz.blockchair.com/bitcoin/outputs/blockchair_bitcoin_outputs_{date.strftime('%Y%m%d')}.tsv.gz"
         return await self._download_file(url)
 
     async def download_addresses(self, date: dt.date) -> io.BytesIO:
+        """Загрузить файл с адресами"""
         url = f"https://gz.blockchair.com/bitcoin/addresses/blockchair_bitcoin_addresses_latest.tsv.gz"
         return await self._download_file(url)
 
     async def download_all_by_date(self, date: dt.date) -> tuple[io.BytesIO, io.BytesIO, io.BytesIO, io.BytesIO]:
+        """Загрузить все данные по дате"""
         return await asyncio.gather(
             self.download_transactions(date),
             self.download_inputs(date),
@@ -71,6 +81,8 @@ class BlockchairParser:
         )
 
     async def download_and_unpack(self, date: dt.date = dt.date.today()):
+        """Загрузить и распаковать все данные по дате"""
+
         # у blockchair есть ограничение, поэтому от асинхронной загрузки нет толку
         # transactions, inputs, outputs, addresses = await self.download_all_by_date(date)
 
@@ -117,6 +129,8 @@ class BlockchairParser:
         main_logger.info("Unpacking outputs done")
 
     async def download_and_insert_to_db(self, date: dt.date):
+        """Загрузить и вставить данные в БД по дате"""
+
         main_logger.info(f"Downloading data for {date}")
         await self.download_and_unpack(date)
         main_logger.info(f"Data for {date} downloaded")
@@ -126,10 +140,13 @@ class BlockchairParser:
 
     def stop_downloader_process(self):
         """Остановить процесс для скачивания данных"""
+
         if self._process is not None:
             self._process.terminate()
 
     def force_download_and_insert_to_db(self):
+        """Загрузить и вставить данные в БД принудительно"""
+
         self.stop_downloader_process()
 
         main_logger.info("Force download and insert to db...")
@@ -179,6 +196,7 @@ class BlockchairParser:
         return self._process
 
     def parse_data_to_df(self, date: dt.date):
+        """Сконвертировать данные в pandas.DataFrame"""
         inputs = pd.read_csv(self._download_dir / "inputs" / f"blockchair_bitcoin_inputs_{date.strftime('%Y%m%d')}.tsv", sep="\t")
         outputs = pd.read_csv(self._download_dir / "outputs" / f"blockchair_bitcoin_outputs_{date.strftime('%Y%m%d')}.tsv", sep="\t")
         # transactions = pd.read_csv(self._download_dir / "transactions" / f"blockchair_bitcoin_transactions_{date.strftime('%Y%m%d')}.tsv", sep="\t")
